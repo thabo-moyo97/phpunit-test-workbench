@@ -1,0 +1,56 @@
+services:
+  phpunit9:
+    build:
+      context: .
+      dockerfile: Dockerfile.php7
+    volumes:
+      - ./tests:/app/tests
+      - ./phpunit.xml:/app/phpunit.xml
+      - ./vendor-php9:/app/vendor
+      - ./composer-php9:/app/composer
+      - composer-cache-9:/root/.composer/cache
+    command: vendor/bin/phpunit --configuration phpunit.xml
+    environment:
+      - COMPOSER_REQUIRE=phpunit/phpunit:^9.0
+      - XDEBUG_MODE=coverage
+      - COMPOSER_VENDOR_DIR=/app/vendor
+      - TERM=xterm-256color
+
+  phpunit10:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./tests:/app/tests
+      - ./phpunit.xml:/app/phpunit.xml
+      - ./vendor-php10:/app/vendor
+      - ./composer-php10:/app/composer
+      - composer-cache-10:/root/.composer/cache
+    command: vendor/bin/phpunit --configuration phpunit.xml
+    environment:
+      - COMPOSER_REQUIRE=phpunit/phpunit:^10.0
+      - XDEBUG_MODE=coverage
+      - COMPOSER_VENDOR_DIR=/app/vendor
+      - TERM=xterm-256color
+
+  phpunit11:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./tests:/app/tests
+      - ./phpunit.xml:/app/phpunit.xml
+      - ./vendor-php11:/app/vendor
+      - ./composer-php11:/app/composer
+      - composer-cache-11:/root/.composer/cache
+    command: vendor/bin/phpunit --configuration phpunit.xml
+    environment:
+      - COMPOSER_REQUIRE=phpunit/phpunit:^11.0
+      - XDEBUG_MODE=coverage
+      - COMPOSER_VENDOR_DIR=/app/vendor
+      - TERM=xterm-256color
+
+volumes:
+  composer-cache-9:
+  composer-cache-10:
+  composer-cache-11:

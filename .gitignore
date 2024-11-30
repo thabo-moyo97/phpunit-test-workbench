@@ -5,3 +5,6 @@ src/test/fixtures/composer.lock
 node_modules
 .vscode-test/
 *.vsix
+
+docker/vendor-php*
+.DS_Store

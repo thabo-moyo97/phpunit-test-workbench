@@ -97,15 +97,7 @@ export class TestExecutionRequest {
         } else if (definition.getType() === ItemType.method) {
             let dataProviders = definition.getDataProviders();
             if (dataProviders.length > 0) {
-                const phpUnitVersion = await request.getPhpUnitVersion();
-                
-                if (phpUnitVersion >= 10) {
-                    request.setArgPhpUnit('--filter', new RegExp('::' + definition.getMethodName() + '($| with data set #\\d+$)').source);
-                } else if (phpUnitVersion >= 7) {
-                    request.setArgPhpUnit('--filter', definition.getMethodName() + '.*');
-                } else {
-                    request.setArgPhpUnit('--filter', '/' + definition.getMethodName() + '($| with data set #\d+$)/');
-                }
+                request.setArgPhpUnit('--filter', new RegExp('::' + definition.getMethodName() + '($| with data set .*$)').source);
             } else {
                 request.setArgPhpUnit('--filter', definition.getMethodName() + '$');
             }

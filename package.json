@@ -232,6 +232,33 @@
           "type": "string",
           "markdownDescription": "Default hostname to use for Xdebug connections, if a host is not defined in your selected debug launch configuration. Default is `localhost`.",
           "default": "localhost"
+        },
+        "phpunit-test-workbench.continuous.additionalPatterns": {
+          "scope": "resource",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional file patterns that should trigger continuous test runs. Example: ['src/**/*Controller.php', 'src/**/*Service.php']"
+        },
+        "phpunit-test-workbench.continuous.pathMappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Regular expression pattern to match source files"
+              },
+              "testPattern": {
+                "type": "string",
+                "description": "Regular expression pattern to match corresponding test files"
+              }
+            }
+          },
+          "default": [],
+          "description": "Map source files to test files using regular expressions"
         }
       }
     },

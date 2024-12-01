@@ -143,41 +143,94 @@ export class TestFileLoader {
     }
 
     public getLocatorPatternsContinuousTestRun(item: vscode.TestItem): vscode.RelativePattern[] {
-        // Get test item details
         let details = this.testItemMap.getTestDefinition(item.id);
-        let workspaceFolder = undefined;
-        if (item.uri) {
-            workspaceFolder = vscode.workspace.getWorkspaceFolder(item.uri);
-        }
+        let workspaceFolder = item.uri ? vscode.workspace.getWorkspaceFolder(item.uri) : undefined;
         if (!workspaceFolder) {
             return [];
         }
-        let testSuffixGlob = this.settings.getTestSuffixGlob(workspaceFolder);
 
         let patterns: vscode.RelativePattern[] = [];
-        switch (details?.getType()) {
-            case ItemType.testsuite: 
-                // Get test suite globs from definition
-                //testSuiteMap.get(details.getWorkspaceFolderUri(), details.getTestSuiteName());
-                break;
-            case ItemType.namespace:
-                // Generate relative path based on the namespace directory, and the test suffixes defined for the workspace
-                var glob = item.uri!.path + '/**/' + testSuffixGlob;
-                patterns.push(new vscode.RelativePattern(workspaceFolder, glob));
-                break;
-            case ItemType.class:
-            case ItemType.method:
-                // Pull apart URI to get the folder, and make the filename an exact match pattern
-                var pathParts = item.uri!.path.split('/');
-                var pattern = pathParts.pop();
-                if (!pattern) {
-                    pattern = testSuffixGlob;
-                }
-                patterns.push(new vscode.RelativePattern(pathParts.join('/'), pattern));
-                break;
+        
+        if (details?.getType() === ItemType.class || details?.getType() === ItemType.method) {
+            // Add pattern for the test file itself
+            // Convert absolute path to relative path from workspace root
+            const relativePath = vscode.workspace.asRelativePath(item.uri!, false);
+            patterns.push(new vscode.RelativePattern(workspaceFolder, relativePath));
+
+            // Get source file path by analyzing test file path
+            const sourceFilePath = this.getSourceFilePathFromTest(item.uri!.fsPath, workspaceFolder);
+            if (sourceFilePath) {
+                console.debug('🔍 Mapped test to source:', {
+                    test: relativePath,
+                    source: sourceFilePath
+                });
+                patterns.push(new vscode.RelativePattern(workspaceFolder, sourceFilePath));
+            }
         }
 
+        console.debug('📋 Final Patterns:', patterns.map(p => ({
+            base: p.baseUri.fsPath,
+            pattern: p.pattern
+        })));
         return patterns;
+    }
+
+    private getSourceFilePathFromTest(testPath: string, workspaceFolder: vscode.WorkspaceFolder): string | null {
+        // Common PSR-4 namespace mappings
+        const namespaceMap = new Map<string, string>([
+            ['Tests', 'App'],
+            ['Test', 'App'],
+            ['tests', 'app'],
+            ['test', 'app']
+        ]);
+
+        // First, find the test directory
+        const testDirPatterns = ['/tests/', '/test/', '/Tests/', '/Test/'];
+        const testDirMatch = testDirPatterns.find(pattern => testPath.includes(pattern));
+        if (!testDirMatch) {
+            console.debug('❌ No test directory match found for:', testPath);
+            return null;
+        }
+
+        // Get the PSR-4 namespace path
+        const [_, namespacePathPart] = testPath.split(testDirMatch);
+        if (!namespacePathPart) {
+            console.debug('❌ No namespace path part found for:', testPath);
+            return null;
+        }
+
+        // Convert path to PSR-4 namespace
+        let namespaceParts = namespacePathPart
+            .replace('Test.php', '.php')
+            .split('/')
+            .filter(Boolean);
+
+        // Map the root test namespace to source namespace
+        if (namespaceParts.length > 0) {
+            const rootNamespace = namespaceParts[0];
+            const sourceNamespace = namespaceMap.get(rootNamespace);
+            if (sourceNamespace) {
+                namespaceParts[0] = sourceNamespace;
+            }
+        }
+
+        // Construct the source file path following PSR-4
+        const sourcePath = namespaceParts.join('/');
+        
+        // Create full path for existence check
+        const fullPath = vscode.Uri.joinPath(workspaceFolder.uri, sourcePath).fsPath;
+
+        // Verify file exists
+        try {
+            if (require('fs').existsSync(fullPath)) {
+                console.debug('✅ Found PSR-4 source file:', sourcePath);
+                return sourcePath;
+            }
+        } catch (error) {
+            console.debug('❌ Error checking PSR-4 path:', error);
+        }
+
+        return null;
     }
 
     /***********************************************************************/

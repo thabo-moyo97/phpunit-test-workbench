@@ -1,0 +1,26 @@
+{
+  "phpunit-test-workbench.continuous.additionalPatterns": [
+    "src/**/*Controller.php",
+    "src/**/*Service.php",
+    "app/Models/**/*.php",
+    "lib/**/*.php"
+  ],
+  "phpunit-test-workbench.continuous.pathMappings": [
+    {
+      "pattern": "^src/Controllers/(.+)Controller\\.php$",
+      "testPattern": "^tests/Controllers/$1ControllerTest\\.php$"
+    },
+    {
+      "pattern": "^src/Services/(.+)Service\\.php$",
+      "testPattern": "^tests/Services/$1ServiceTest\\.php$"
+    },
+    {
+      "pattern": "^app/Models/(.+)\\.php$",
+      "testPattern": "^tests/Models/$1Test\\.php$"
+    },
+    {
+      "pattern": "^lib/(.+)/(.+)\\.php$",
+      "testPattern": "^tests/$1/$2Test\\.php$"
+    }
+  ]
+} 

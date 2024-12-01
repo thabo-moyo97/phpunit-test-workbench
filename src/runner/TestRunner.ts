@@ -24,6 +24,7 @@ export class TestRunner {
     private testDiagnosticMap: Map<string, vscode.Diagnostic[]>;
     private activeContinuousRuns: Map<vscode.RelativePattern, ContinuousTestRunDefinition>;
     private mostRecentTestRunRequest?: { request: vscode.TestRunRequest, debug: boolean, coverage: boolean };
+    private additionalPatterns: Map<vscode.RelativePattern, Set<vscode.RelativePattern>>;
 
     constructor(ctrl: vscode.TestController, itemMap: TestItemMap, coverageMap: TestCoverageMap, diagnosticCollection: vscode.DiagnosticCollection, settings: Settings, logger: Logger) {
         this.ctrl = ctrl;
@@ -35,6 +36,7 @@ export class TestRunner {
         this.testItemQueue = new Map<string, vscode.TestItem>();
         this.testDiagnosticMap = new Map<string, vscode.Diagnostic[]>();
         this.activeContinuousRuns = new Map<vscode.RelativePattern, ContinuousTestRunDefinition>();
+        this.additionalPatterns = new Map<vscode.RelativePattern, Set<vscode.RelativePattern>>();
     }
 
     public async run(request: vscode.TestRunRequest, cancel: vscode.CancellationToken, debug: boolean = false, coverage: boolean = false) {
@@ -410,31 +412,142 @@ export class TestRunner {
                 debug
             );
             this.activeContinuousRuns.set(pattern, continuousRunDef);
+
+            // Add additional patterns from settings
+            const additionalPatterns = new Set<vscode.RelativePattern>();
+            const configPatterns = this.settings.get('continuous.additionalPatterns', []) as string[];
+            
+            if (configPatterns.length > 0) {
+                const workspaceFolder = vscode.workspace.getWorkspaceFolder(pattern.baseUri);
+                if (workspaceFolder) {
+                    for (const configPattern of configPatterns) {
+                        this.logger.info(`Adding additional pattern for continuous run: ${configPattern}`);
+                        additionalPatterns.add(new vscode.RelativePattern(workspaceFolder, configPattern));
+                    }
+                }
+            }
+            
+            this.additionalPatterns.set(pattern, additionalPatterns);
         }
 
-        // Handle continuous run cancellation by removing patterns from the list of active runs
+        // Handle continuous run cancellation
         cancel.onCancellationRequested(event => {
             for (let pattern of patterns) {
                 this.activeContinuousRuns.delete(pattern);
+                this.additionalPatterns.delete(pattern);
             }
         });
     }
+    /*
+     * TODO
+     * - Clean up the logic for checking if a document matches an active continuous run pattern
+     * - Optimise code, written in a bit of a rush to get it working!
+    */
+    public checkForActiveContinuousRun(document: vscode.TextDocument) { 
+        const relativePath = vscode.workspace.asRelativePath(document.uri, false);
+        console.debug('🔍 Checking for active continuous run:', {
+            document: relativePath
+        });
 
-    public checkForActiveContinuousRun(document: vscode.TextDocument) {
-        // Get URI for document
-        for (let pattern of this.activeContinuousRuns.keys()) {
-            if (vscode.languages.match({ pattern: pattern }, document) !== 0) {
-                // Get continuous test run definition
-                let continuousRun = this.activeContinuousRuns.get(pattern);
-                if (!continuousRun) {
-                    break;
-                }
+        // Check all patterns for a match
+        for (let [testPattern, continuousRun] of this.activeContinuousRuns) {
+            const testFile = testPattern.pattern;
+            console.debug('🔄 Checking Test Pattern:', {
+                testFile,
+                currentFile: relativePath
+            });
 
-                // Document falls under scope of an active continuous run - start a new test run now
-                this.run(continuousRun.createTestRunRequest(), continuousRun.getCancellationToken(), continuousRun.isDebug());
+            const isGlobPattern = testFile.includes('*') || testFile.includes('{');
+            if (isGlobPattern) {
+                this.run(
+                    continuousRun.createTestRunRequest(), 
+                    continuousRun.getCancellationToken(), 
+                    continuousRun.isDebug()
+                );
                 return;
             }
+            
+            // Handle exact file patterns
+            const methodMatch = testFile.match(/::(test\w+)$/);
+            const methodName = methodMatch ? methodMatch[1] : null;
+            const testFilePath = methodName ? testFile.replace(`::{methodName}`, '') : testFile;
+
+            if (testFilePath === relativePath) {
+                console.debug('✅ Matched test file directly');
+                this.runAllContinuousTests();
+                return;
+            }
+
+            const sourceFile = this.convertTestPathToSourcePath(testFilePath);
+            if (sourceFile === relativePath) {
+                console.debug('✅ Matched source file through PSR-4 mapping:', {
+                    sourceFile,
+                    testFile: testFilePath,
+                    method: methodName
+                });
+                this.runAllContinuousTests();
+                return;
+            }
+
+            // Check path mappings from settings
+            const pathMappings = this.settings.get('continuous.pathMappings', []) as Array<{
+                pattern: string;
+                testPattern: string;
+            }>;
+
+            for (const mapping of pathMappings) {
+                const sourcePattern = new RegExp(mapping.pattern);
+                const testPattern = new RegExp(mapping.testPattern);
+                
+                if (sourcePattern.test(relativePath) || testPattern.test(relativePath)) {
+                    console.debug('✅ Matched path mapping pattern:', {
+                        mapping,
+                        file: relativePath
+                    });
+                    this.runAllContinuousTests();
+                    return;
+                }
+            }
         }
+    }
+
+    private runAllContinuousTests() {
+        console.debug(`🚀 Running all continuous tests`);
+        for (const [_, continuousRun] of this.activeContinuousRuns) {
+            this.runContinuousTest(continuousRun);
+        }
+    }
+
+    private convertTestPathToSourcePath(testPath: string): string {
+        // Handle common PSR-4 test file patterns
+        const patterns = [
+            { test: /^tests\/(.+)Test\.php$/, source: 'src/$1.php' },
+            { test: /^test\/(.+)Test\.php$/, source: 'src/$1.php' },
+            { test: /^tests\/(.+)\/(.+)Test\.php$/, source: 'src/$1/$2.php' },
+            { test: /^tests\/App\/(.+)Test\.php$/, source: 'app/$1.php' },
+            { test: /^tests\/Test\/(.+)Test\.php$/, source: 'app/$1.php' }
+        ];
+
+        for (const pattern of patterns) {
+            if (pattern.test.test(testPath)) {
+                return testPath.replace(pattern.test, pattern.source);
+            }
+        }
+
+        return testPath;
+    }
+
+    private runContinuousTest(continuousRun: ContinuousTestRunDefinition) {
+        if (!continuousRun) {
+            return;
+        }
+
+        // Document falls under scope of an active continuous run - start a new test run now
+        this.run(
+            continuousRun.createTestRunRequest(), 
+            continuousRun.getCancellationToken(), 
+            continuousRun.isDebug()
+        );
     }
 
     public removeContinuousRunForDeletedFile(deletedFileUri: vscode.Uri) {

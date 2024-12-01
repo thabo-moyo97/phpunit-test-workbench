@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Set execute permissions for scripts
+chmod +x test-filters.sh
+chmod +x setup.sh
+
 # Create necessary directories
 mkdir -p vendor-php{9,10,11}
 mkdir -p composer-php{9,10,11}
